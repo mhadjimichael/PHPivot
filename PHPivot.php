@@ -406,10 +406,9 @@ class PHPivot{
         if(empty($this->_recordset)){
             return $table;
         }
-
         //Calculate all CALCULATED COLUMNS
         $this->calculateColumns();
-        
+
         //Find all rows' and columns' unique "labels"
 
         //Initialize with an empty list for each row and column
