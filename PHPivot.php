@@ -2,6 +2,7 @@
 
 //PHPivot
 /*Supported Features:
+    -Can Import "Prepared" 2D Array/Table
     -Nested (infinite) rows and columns
     -Sum and Count Functions
     -Generate HTML Table
@@ -33,25 +34,17 @@
         @todo:-Color Min
         @todo:-Color average
         @todo:-Conditional (Value comparison)+pass function
-        
+
 
   @todo
-  -NO ROWS
-  -Function Filters that give access to data! [TABLE 1]
-  -Consecutive Match N Filter
-  -Make sure % sum up to exactly 100!
-  -DISPLAY AS % OF COLUMN *TOTAL* [TABLE 61]]
-  -DISPLAY (AS % OF COLUMN) ROW SUBTOTALS [TABLE 61]
-  -Check whether column/row names exist in data source (and display relevant error messages)
-  -DISPLAY SPECIFIC ROWS/COLUMNS IRRESPECTIVE OF DATA exists/not!
+  -Make sure % sums up to exaclty 100%
+    -http://stackoverflow.com/questions/13483430/how-to-make-rounded-percentages-add-up-to-100
 
 @done (?)
     -NO ROWS AND MULTIPLE COLUMNS (TABLE 21) (?????)
     -MULTIPLE COLUMNS (TABLE 22)
 
 */
-
-//TODO: Filters! (user functions?)
 
 class PHPivot{
     const PIVOT_VALUE_SUM = 1;
@@ -62,10 +55,15 @@ class PHPivot{
     const COMPARE_NOT_EQUAL = 2;
 
     const DISPLAY_AS_VALUE = 0;
-    const DISPLAY_AS_PERC_DEEPEST_LEVEL = 1;
-    const DISPLAY_AS_PERC_COL = 2;
-    const DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL = 3;
+    const DISPLAY_AS_PERC_DEEPEST_LEVEL = 100;
+    const DISPLAY_AS_PERC_COL = 1;
+    const DISPLAY_AS_VALUE_AND_PERC_COL = 2;
+    const DISPLAY_AS_PERC_ROW = 3;
+    const DISPLAY_AS_VALUE_AND_PERC_ROW = 4;
+    const DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL = 5;
 
+
+    const TYPE_VAL = 'TYPE_VAL';
     const TYPE_ROW = 'TYPE_ROW';
     const TYPE_COL = 'TYPE_COL';
     const TYPE_COMP = 'TYPE_COMP';
@@ -91,8 +89,8 @@ class PHPivot{
     protected $_raw_table = array();
     protected $_calculated_columns = array();
     protected $_values = array();
-    protected $_values_function = array();
-    protected $_values_display = array();
+    protected $_values_functions = array();
+    protected $_values_display = null;
     protected $_columns = array();
     protected $_columns_titles = array();
     protected $_columns_sort = self::SORT_ASC;
@@ -111,13 +109,84 @@ class PHPivot{
 
     protected $_filters = array();
 
+    protected $_source_is_2DTable = false;
+
     public static function create($recordset){
         return new self($recordset);
     }
 
+    public static function createFrom2DArray($recordset, $column_title, $row_desc){
+        //@todo: check table completeness?
+        //Transform 2D relational array to PHPivot readable format
+
+        $pivotTable = array_merge(array(), $recordset);
+
+        $array_rows = array_keys($pivotTable);
+        $count_rows = count($array_rows);
+
+        $array_vals = array_keys($pivotTable[ $array_rows[0] ]);
+        $count_vals = count($array_vals);
+
+        foreach($pivotTable as $rowName => $rowContent){
+            $pivotTable[$rowName]['_type'] = PHPivot::TYPE_COL;
+            foreach($rowContent as $valueName => $value){
+                $pivotTable[$rowName][$valueName] = array('_type' => PHPivot::TYPE_VAL, '_val' => $value);
+            }
+        }
+        $pivotTable['_type'] = PHPivot::TYPE_ROW;
+
+        //Create a new instance of PHPivot and pass our data in
+        $row_titles = $array_rows;
+        array_unshift($row_titles, $row_desc .= ' &#8595;');
+
+        $pivot = new self($pivotTable);
+        $pivot->set2Dargs($row_titles, $column_title);
+
+        return $pivot;
+    }
+
+    public static function createFrom1DArray($recordset, $column_title, $row_desc){
+        //@todo: check table completeness?
+        //Transform 2D relational array to PHPivot readable format
+
+        $pivotTable = array_merge(array(), $recordset);
+
+        $array_rows = array_keys($pivotTable);
+        $count_rows = count($array_rows);
+
+        //$array_vals = array_keys($pivotTable[ $array_rows[0] ]);
+        //$count_vals = count($array_vals);
+
+        /*foreach($pivotTable as $rowName => $rowContent){
+            $pivotTable[$rowName]['_type'] = PHPivot::TYPE_VAL;
+            foreach($rowContent as $valueName => $value){
+                $pivotTable[$rowName][$valueName] = array('_type' => PHPivot::TYPE_VAL, '_val' => $value);
+            }
+        }*/
+        $pivotTable['_type'] = PHPivot::TYPE_ROW;
+
+        //Create a new instance of PHPivot and pass our data in
+        //$row_titles = $array_rows;
+        array_unshift($row_titles, $row_desc);
+
+        $pivot = new self($pivotTable);
+        $pivot->set2Dargs($row_titles, $column_title);
+
+        return $pivot;
+    }
 
     public function __construct($recordset){
         $this->_recordset = $recordset;
+    }
+
+    public function set2Dargs($row_titles, $column_title){
+        $this->_rows_titles = $row_titles;
+        $this->_columns_titles = array($column_title . ' &#8594;');
+        $this->_source_is_2DTable = true;
+    }
+
+    public function getTable(){
+        return $this->_table;
     }
 
     public function getRows(){
@@ -133,20 +202,58 @@ class PHPivot{
         return $this->_columns_titles;
     }
 
-    public function setPivotValueField($values, $function = PHPivot::PIVOT_VALUE_SUM, $display = PHPivot::DISPLAY_AS_VALUE, $title = null){
-        $this->_values = $values;
-        $this->_values_function = $function;
-        $this->_values_display = $display;
+    private function _notice($msg){
+        echo '<h4>NOTICE: ' . $msg . '</h4>';
+    }
 
-        if(!is_null($title)){
-            $this->_columns_titles = array($title);
+    private function _error($msg){
+        die('<h4>ERROR: ' . $msg . '</h4>');
+    }
+
+    public function setValueFunction($functions = PHPivot::PIVOT_VALUE_SUM){
+        $this->_notice('setValueFunction is deprecated. please switch to "setPivotValueFields"');
+        if(!is_array($functions)){
+            $functions = array($functions);
         }
+        $this->_values_functions = $functions;
+        return $this;
+    }
+    //@/deprecated
+
+    public function setPivotValueFields($values, $functions = PHPivot::PIVOT_VALUE_SUM, /*only 1*/$display = PHPivot::DISPLAY_AS_VALUE, $titles = null){
+        if(!is_array($values)){
+            $values = array($values);
+        }
+        if(!is_array($functions)){
+            $functions = array($functions);
+        }
+        if(count($functions) < count($values)){
+            if(count($functions) == 1){
+                $fn = $functions[0];
+                $functions = array_fill(0, count($values), $fn);
+            }else{
+                $this->_error('Value Fields and Function Count do not match.');
+            }
+        }
+        if(!is_null($titles) && !is_array($titles)){
+            $titles = array($titles);
+        }
+
+        $this->_values = $values;
+        $this->_values_functions = $functions;
+        $this->setDisplayAs($display);
+        $this->_columns_titles = $titles; //this fallbacks in case of "0 columns" (that is, only values)
 
         return $this;
     }
 
-    public function setValueFunction($function = PHPivot::PIVOT_VALUE_SUM){
-        $this->_values_function = $function;
+
+    public function setValueFunctions($functions = PHPivot::PIVOT_VALUE_SUM){
+        //@todo: redo with new stuff
+        if(!is_array($functions)){
+            $functions = array($functions);
+        }
+        $this->_values_functions = $functions;
         return $this;
     }
 
@@ -203,14 +310,15 @@ class PHPivot{
         return $this;
     }
 
+    //@todo? re multi values
     protected function cleanBlanks(&$point = null){
         if(!$this->_ignore_blanks)return null;
 
         $countNonBlank = 0;
-
+        //@todo?
         if(PHPivot::isDataLevel($point)){
             if(!is_array($point)) return (!is_null($point) && !empty($point) ? 1 : 0);
-            else if($point['_type'] == PHPivot::TYPE_COMP) {
+            else if(strcmp($point['_type'],PHPivot::TYPE_COMP) == 0) {
                 $data_values = PHPivot::pivot_array_values($point);
                 for($i = 0 ; $i < count($data_values); $i++){
                     if(!is_null($data_values[$i]) && !empty($data_values[$i])){
@@ -219,7 +327,16 @@ class PHPivot{
                 }
                 return $countNonBlank;
             }
-            else die('CleanBlanks:else case');
+            else if(strcmp($point['_type'],PHPivot::TYPE_VAL) == 0) {
+                $data_values = PHPivot::pivot_array_values($point);
+                for($i = 0 ; $i < count($data_values); $i++){
+                    if(!is_null($data_values[$i]) && !empty($data_values[$i])){
+                        $countNonBlank++;
+                    }
+                }
+                return $countNonBlank;
+            }
+            else $this->_error('CleanBlanks:else case');
         }
 
         $point_keys = array_keys($point);
@@ -229,11 +346,11 @@ class PHPivot{
 
             if($this->cleanBlanks($point[ $point_keys[$i] ]) > 0){
                 $countNonBlank++;
-            }else if($point['_type'] == PHPivot::TYPE_ROW){
+            }else if(isset($point['_type']) && strcmp($point['_type'], PHPivot::TYPE_ROW) == 0){
                 unset($point[ $point_keys[$i] ]);
             }
         }
-        
+
         return $countNonBlank;
     }
 
@@ -342,7 +459,7 @@ class PHPivot{
                                 die('ERROR: PHPivot: FILTER_MATCH function ' . $this->_filters[$i]['match'] . ' not defined.' );
                             break;
                         }
-                        
+
                     }else{
                         if(!isset($rs_row[$this->_filters[$i]['column']]))die('ERROR: PHPivot: Filter: No such column ' . $this->_filters[$i]['column']);
                         switch ($this->_filters[$i]['compare']){
@@ -363,7 +480,7 @@ class PHPivot{
                 case PHPivot::FILTER_USER_DEFINED:
                     //$new_col_vals = call_user_func( $col_fn, $this->_recordset, $i );
                     //@todo?
-                    die('User defined filters not yet implemented!');
+                    $this->_error('User defined filters not yet implemented!');
                     $filterResult = $filterResult && call_user_func($this->_recordset, $rs_i, $this->_filters[$i]['extra_params']);
                 break;
                 default:
@@ -397,6 +514,10 @@ class PHPivot{
                 }
             }
         }
+        //@debug
+        /*echo "\n<!--<h2>With calculated columns</h2>\n";
+        print_r($this->_recordset);
+        echo '-->';*/
         return $this;
     }
 
@@ -406,157 +527,177 @@ class PHPivot{
         if(empty($this->_recordset)){
             return $table;
         }
-        //Calculate all CALCULATED COLUMNS
-        $this->calculateColumns();
+        if(!$this->_source_is_2DTable){
+            //Calculate all CALCULATED COLUMNS
+            $this->calculateColumns();
 
-        //Find all rows' and columns' unique "labels"
+            //Find all rows' and columns' unique "labels"
 
-        //Initialize with an empty list for each row and column
-        $rows_unique_values = &$this->_cache_rows_unique_values;
-        for($i = 0; $i < count($this->_rows); $i++){
-            $rows_unique_values[$this->_rows[$i]] = array();
-        }
-        $columns_unique_values = &$this->_cache_columns_unique_values;
-        for($i = 0; $i < count($this->_columns); $i++){
-            $columns_unique_values[$this->_columns[$i]] = array();
-        }
-
-        //Iterate through the dataset and add the unique values of interest to the respective arrays
-        foreach($this->_recordset as $rs_ind => $rs_row){
-            if(!$this->isFilterOK($rs_row)) continue; //Excluded due to filter
-            foreach($this->_columns as $col){
-                if(!in_array( $rs_row[$col], $columns_unique_values[$col])){
-                    array_push($columns_unique_values[$col], $rs_row[$col]);
-                }
-            }
-            foreach($this->_rows as $row_title){
-                if(!in_array( $rs_row[$row_title], $rows_unique_values[$row_title])){
-                    array_push($rows_unique_values[$row_title], $rs_row[$row_title]);
-                }
-            }
-        }
-
-        //Sort columns and rows names
-        foreach($this->_columns as $index => $col){
-            $sort = $this->_columns_sort;
-            if(is_array($this->_columns_sort)){
-                if(isset($this->_columns_sort[$index])){
-                    $sort = $this->_columns_sort[$index];
-                }else{
-                    $sort = PHPivot::SORT_ASC;
-                }
-            }
-            if($sort == PHPivot::SORT_ASC || $sort == PHPivot::SORT_DESC){ //Natural compare algorithm
-                natsort($columns_unique_values[$col]);
-                if($sort == PHPivot::SORT_DESC){
-                    array_reverse($columns_unique_values[$col]);
-                }
-            }else{ //User defined sort algorithm
-                usort($columns_unique_values[$col], $sort);
-            }
-        }
-        foreach($this->_rows as $index => $row){
-            $sort = $this->_rows_sort;
-            if(is_array($this->_rows_sort)){
-                if(isset($this->_rows_sort[$index])){
-                    $sort = $this->_rows_sort[$index];
-                }
-                else{
-                    $sort = PHPivot::SORT_ASC;
-                }
-            }
-            if($sort == PHPivot::SORT_ASC || $sort == PHPivot::SORT_DESC){ //Natural compare algorithm
-                natsort($rows_unique_values[$row]);
-                if($this->_rows_sort == PHPivot::SORT_DESC){
-                    array_reverse($rows_unique_values[$row]);
-                }
-            }else{ //User defined sort algorithm
-                usort($rows_unique_values[$row], $sort);
-            }
-        }
-
-        //Create an associative array with all the unique values for all the columns
-        $columns_assoc = null;
-        for($i = count($this->_columns) - 1; $i >= 0; $i--){
-            $new_columns_assoc = array();
-            $new_columns_assoc['_type'] = PHPivot::TYPE_COL;
-            $new_columns_assoc['_title'] = $this->_columns_titles[$i];
-            $cur_col_values = $columns_unique_values[$this->_columns[$i] ];
-            foreach($cur_col_values as $key => $value){
-                $new_columns_assoc[$value] = $columns_assoc;
-            }
-            $columns_assoc = $new_columns_assoc;
-        }
-
-        //Create an associative array with all the unique values for all the rows
-        $rows_assoc = $columns_assoc; //Each row starts with all the columns
-        for($i = count($this->_rows) - 1; $i >= 0; $i--){
-            $new_rows_assoc = array();
-            $new_rows_assoc['_type'] = PHPivot::TYPE_ROW;
-            $new_columns_assoc['_title'] = $this->_rows_titles[$i];
-            $cur_row_values = $rows_unique_values[$this->_rows[$i] ];
-            foreach($cur_row_values as $key => $value){
-                $new_rows_assoc[$value] = $rows_assoc;
-            }
-            $rows_assoc = $new_rows_assoc;
-        }
-        $table = $rows_assoc;
-
-        //Iterate throughout the recordset and fill the table
-        foreach($this->_recordset as $rs_ind => $rs_row){
-            if(!$this->isFilterOK($rs_row)) continue; //Excluded due to filter
-            //Traverse and find the right row and column
-            $point = &$table;
+            //Initialize with an empty list for each row and column
+            $rows_unique_values = &$this->_cache_rows_unique_values;
             for($i = 0; $i < count($this->_rows); $i++){
-                $point = &$point[ $rs_row[$this->_rows[$i] ] ];
+                $rows_unique_values[$this->_rows[$i]] = array();
             }
+            $columns_unique_values = &$this->_cache_columns_unique_values;
             for($i = 0; $i < count($this->_columns); $i++){
-                $point = &$point[ $rs_row[$this->_columns[$i]] ];
+                $columns_unique_values[$this->_columns[$i]] = array();
             }
-            //Record current data (depends on our PIVOT_VALUE function)
-            $value_point = &$point;
-            $value_function = $this->_values_function;
 
-            switch($value_function){
-                case PHPivot::PIVOT_VALUE_COUNT:
-                    if(is_null($value_point)){
-                        $value_point = 1;
-                    }else{
-                        $value_point++;
+            //Iterate through the dataset and add the unique values of interest to the respective arrays
+            foreach($this->_recordset as $rs_ind => $rs_row){
+                if(!$this->isFilterOK($rs_row)) continue; //Excluded due to filter
+                foreach($this->_columns as $col){
+                    if(!in_array( $rs_row[$col], $columns_unique_values[$col])){
+                        array_push($columns_unique_values[$col], $rs_row[$col]);
                     }
-                break;
-
-                case PHPivot::PIVOT_VALUE_SUM:
-                    if(is_null($value_point)){
-                        $value_point = $rs_row[$this->_values];
-                    }else{
-                        $value_point += $rs_row[$this->_values];
+                }
+                foreach($this->_rows as $row_title){
+                    if(!in_array( $rs_row[$row_title], $rows_unique_values[$row_title])){
+                        array_push($rows_unique_values[$row_title], $rs_row[$row_title]);
                     }
-                break;
-
-                default:
-                    die('ERROR: Value function not defined in PHPivot: ' . $value_function);
-                break;
+                }
             }
+
+            //Sort columns and rows names
+            foreach($this->_columns as $index => $col){
+                $sort = $this->_columns_sort;
+                if(is_array($this->_columns_sort)){
+                    if(isset($this->_columns_sort[$index])){
+                        $sort = $this->_columns_sort[$index];
+                    }else{
+                        $sort = PHPivot::SORT_ASC;
+                    }
+                }
+                if($sort == PHPivot::SORT_ASC || $sort == PHPivot::SORT_DESC){ //Natural compare algorithm
+                    natsort($columns_unique_values[$col]);
+                    if($sort == PHPivot::SORT_DESC){
+                        array_reverse($columns_unique_values[$col]);
+                    }
+                }else{ //User defined sort algorithm
+                    usort($columns_unique_values[$col], $sort);
+                }
+            }
+            foreach($this->_rows as $index => $row){
+                $sort = $this->_rows_sort;
+                if(is_array($this->_rows_sort)){
+                    if(isset($this->_rows_sort[$index])){
+                        $sort = $this->_rows_sort[$index];
+                    }
+                    else{
+                        $sort = PHPivot::SORT_ASC;
+                    }
+                }
+                if($sort == PHPivot::SORT_ASC || $sort == PHPivot::SORT_DESC){ //Natural compare algorithm
+                    natsort($rows_unique_values[$row]);
+                    if($this->_rows_sort == PHPivot::SORT_DESC){
+                        array_reverse($rows_unique_values[$row]);
+                    }
+                }else{ //User defined sort algorithm
+                    usort($rows_unique_values[$row], $sort);
+                }
+            }
+
+            //Create an associative array with all the value fields (for all rows)
+            $values_assoc = array();
+            for($i = 0; $i < count($this->_values); $i++){
+                $new_values_assoc = array();
+                $new_values_assoc['_type'] = PHPivot::TYPE_VAL;
+                //$new_values_assoc['_title'] = $this->_values[$i]; // not needed anymore
+                $new_values_assoc['_val'] = null;
+                $values_assoc[$this->_values[$i]] = $new_values_assoc;
+            }
+
+            //Create an associative array with all the unique values for all the columns
+            $columns_assoc = $values_assoc;
+            for($i = count($this->_columns) - 1; $i >= 0; $i--){
+                $new_columns_assoc = array();
+                $new_columns_assoc['_type'] = PHPivot::TYPE_COL;
+
+                $cur_col_values = $columns_unique_values[ $this->_columns[$i] ];
+                foreach($cur_col_values as $index => $value){
+                    $new_columns_assoc[$value] = $columns_assoc;
+                }
+                $columns_assoc = $new_columns_assoc;
+            }
+
+            //Create an associative array with all the unique values for all the rows
+            $rows_assoc = $columns_assoc; //Each row starts with all the columns
+            for($i = count($this->_rows) - 1; $i >= 0; $i--){
+                $new_rows_assoc = array();
+                $new_rows_assoc['_type'] = PHPivot::TYPE_ROW;
+                $new_columns_assoc['_title'] = $this->_rows_titles[$i];
+                $cur_row_values = $rows_unique_values[$this->_rows[$i] ];
+                foreach($cur_row_values as $key => $value){
+                    $new_rows_assoc[$value] = $rows_assoc;
+                }
+                $rows_assoc = $new_rows_assoc;
+            }
+            $table = $rows_assoc;
+
+            //Iterate throughout the recordset and fill the table
+            foreach($this->_recordset as $rs_ind => $rs_row){
+                if(!$this->isFilterOK($rs_row)) continue; //Excluded due to filter
+                //Traverse and find the right row and column
+                $top_point = &$table;
+                for($i = 0; $i < count($this->_rows); $i++){
+                    $top_point = &$top_point[ $rs_row[$this->_rows[$i] ] ];
+                }
+                for($i = 0; $i < count($this->_columns); $i++){
+                    $top_point = &$top_point[ $rs_row[$this->_columns[$i]] ];
+                }
+
+                //Record current data (depends on our PIVOT_VALUE function)
+                foreach($this->_values as $val_ind => $val){
+                    $point = &$top_point[$val];
+                    $value_point = &$point['_val'];
+                    $point['_type'] = PHPivot::TYPE_VAL; //make sure we "label" this as a value level array (needed for "no columns" cases)
+                    $value_function = $this->_values_functions[$val_ind];
+
+                    switch($value_function){
+                        case PHPivot::PIVOT_VALUE_COUNT:
+                            if(is_null($value_point)){
+                                $value_point = 1;
+                            }else{
+                                $value_point = $value_point+1;
+                            }
+                        break;
+
+                        case PHPivot::PIVOT_VALUE_SUM:
+                            if(is_null($value_point) && !is_null($rs_row[$val])){
+                                $value_point = $rs_row[$val];
+                            }else{
+                                $value_point += $rs_row[$val];
+                            }
+                        break;
+
+                        default:
+                            die('ERROR: Value function not defined in PHPivot: ' . $value_function);
+                        break;
+                    }
+                }
+            }
+
+            $this->cleanBlanks($table);
+        }else{
+            //Source was a 2D table (prepared)
+            $table = $this->_recordset;
+
         }
-
-        $this->cleanBlanks($table);
 
         $this->_raw_table = array_merge(array(), $table); //Clone array to "raw table" (used for comparisons)
         $this->formatData($table);
         $this->colorData($table);
 
         //@debug
-        echo "<!-- \n";
+        /*echo "<!-- \n";
         print_r($table);
-        echo "-->";
+        echo "-->";*/
         $this->_table = $table;
         return $this;
     }
 
     protected static function isSystemField($fieldName){
         for($i = 0; $i < count(PHPivot::$SYSTEM_FIELDS); $i++){
-            //if($fieldName == PHPivot::$SYSTEM_FIELDS[$i]){ BUGGY!
             if(strcmp($fieldName,PHPivot::$SYSTEM_FIELDS[$i]) == 0){
                 return true;
             }
@@ -576,22 +717,27 @@ class PHPivot{
 
 
     protected static function isDataLevel(&$row){
-        return !is_array($row) || (isset($row['_type']) && $row['_type'] == PHPivot::TYPE_COMP);
+        return !is_array($row) || (isset($row['_type']) &&
+            (strcmp($row['_type'],PHPivot::TYPE_VAL) == 0 ||
+            strcmp($row['_type'],PHPivot::TYPE_COMP) == 0));
     }
 
 
     private function getValueFromFormat($a){
         if(is_null($a)) return $a;
         switch($this->_values_display){
+            //@todo multi-value
+            case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
+            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
+            case PHPivot::DISPLAY_AS_VALUE:
+            break;
+
             case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
                 $a = round(substr($a, 0, strpos($a, '%')),$this->_decimal_precision);
             break;
 
             case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
                 $a = round(substr($a, strpos($a,'(')+1, strpos($a,')') - 1),$this->_decimal_precision);
-            break;
-
-            case PHPivot::DISPLAY_AS_VALUE:
             break;
 
             default:
@@ -609,7 +755,7 @@ class PHPivot{
             $a = $this->getValueFromFormat($a);
             $b = $this->getValueFromFormat($b);
         }
-       
+
         if($findMax){
             return ($a > $b ? $a : $b);
         }else{
@@ -660,6 +806,8 @@ class PHPivot{
     }
 
     private function getColorOf($value){
+        return 'inherit';
+        //@todo multi-value
         switch ($this->_color_by){
             case PHPivot::COLOR_ALL:
                 $v = $this->getValueFromFormat($value);
@@ -675,6 +823,8 @@ class PHPivot{
     }
 
     private function colorData(&$row, $row_name = null){
+        //$this->_notice('colorData needs re-implementation.');
+        return; //@TODO
         if(!isset($this->_color_low)) return;
         switch ($this->_color_by){
             case PHPivot::COLOR_ALL:
@@ -698,7 +848,7 @@ class PHPivot{
 
                 for($i=$min;$i<=$max;$i++){
                     //$this->_color_of[$i] = '#' . PHPivot::toHexColor($curColor);
-                    $this->_color_of[$i] = 'rgba(' . $curColor['r'] . ',' .$curColor['g'] . ','.$curColor['b'] . ',0.8)'; 
+                    $this->_color_of[$i] = 'rgba(' . $curColor['r'] . ',' .$curColor['g'] . ','.$curColor['b'] . ',0.8)';
                     $curColor['r'] = floor($fromColor['r'] - $stepBy['r'] * $i);
                     $curColor['g'] = floor($fromColor['g'] - $stepBy['g'] * $i);
                     $curColor['b'] = floor($fromColor['b'] - $stepBy['b'] * $i);
@@ -727,14 +877,122 @@ class PHPivot{
         }
     }
 
+    private function getSumOf(&$d){
+        if(!is_array($d)) return 0;
+
+        if(array_key_exists('_val',$d)){
+            return $d['_val'];
+        }else{
+            $sum = 0;
+            foreach($d as $k => $v){
+                $sum = $sum + $this->getSumOf($d[$k]);
+            }
+            return $sum;
+        }
+    }
+
+    private function setAsPercOf(&$d,$sum,$keepValue = false){
+        if(!is_array($d)) return;
+        if($sum == 0) return;
+
+        if(array_key_exists('_val', $d)){
+            $actual_value = $d['_val'];
+            if(empty($actual_value)){
+                $actual_value = 0;
+                //return ; //keep them blank!
+            }
+
+            $d['_val'] = round($actual_value*100/$sum, $this->_decimal_precision);
+
+            if($keepValue){
+             $d['_val'] .= '% (' . $actual_value . ')';
+            }
+        }else{
+            foreach($d as $k => $v){
+                $this->setAsPercOf($d[$k],$sum,$keepValue);
+            }
+        }
+    }
 
     private function formatData(&$row){
+
         switch ($this->_values_display){
             case PHPivot::DISPLAY_AS_VALUE:
                 return;
             break;
 
+            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_ROW:
+            case PHPivot::DISPLAY_AS_PERC_ROW:
+                //Empty table
+                if(!is_array($row)) return;
+
+                //BFS and reach the deepest row
+                if(!empty(($row)) && array_key_exists('_type', $row) && strcmp($row['_type'], PHPivot::TYPE_ROW) == 0){
+                    $keys = array_keys($row);
+                    $keycount = count($keys);
+                    for($i = 0; $i < $keycount; $i++){
+                        //if($this->isSystemField($keys[$i])) continue;
+                        $this->formatData($row[$keys[$i]]);
+                    }
+                    return ;
+                }
+
+                //We are at columns level:
+                //Sum up all VALUES
+                $sum = $this->getSumOf($row);
+
+                $keepValue = false;
+                switch ($this->_values_display) {
+                    case PHPivot::DISPLAY_AS_VALUE_AND_PERC_ROW:
+                        $keepValue = true;
+                    break;
+                }
+
+                //Calculate % of sum for each value:
+                $this->setAsPercOf($row, $sum, $keepValue);
+            break;
+
+            //@todo
+            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_COL:
+            case PHPivot::DISPLAY_AS_PERC_COL:
+                //Empty table
+                if(!is_array($row)) return;
+
+                //BFS and reach the deepest COL
+                if(!empty(($row)) && array_key_exists('_type', $row) && strcmp($row['_type'], PHPivot::TYPE_COL) == 0){
+                    $keys = array_keys($row);
+                    $keycount = count($keys);
+                    for($i = 0; $i < $keycount; $i++){
+                        //if($this->isSystemField($keys[$i])) continue;
+                        $this->formatData($row[$keys[$i]]);
+                    }
+                    return ;
+                }
+
+                //We are at columns level:
+                //Sum up all VALUES
+                $sum = $this->getSumOf($row);
+
+                $keepValue = false;
+                switch ($this->_values_display) {
+                    case PHPivot::DISPLAY_AS_VALUE_AND_PERC_COL:
+                        $keepValue = true;
+                    break;
+                }
+
+                //Calculate % of sum for each value:
+                $this->setAsPercOf($row, $sum, $keepValue);
+
+            break;
+
+
             case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
+            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
+                echo 'WARNING: DISPLAY_AS_PERC_DEEPEST_LEVEL needs re-implementaiton. Displaying plain values.'; //@todo
+            break;
+
+            /*case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
+            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
                 if(!is_array($row))return; //Empty table
                 //If we didn't reach a "deepest level" array, it means we didn't reach the values yet
                 //so go deeper.
@@ -784,7 +1042,6 @@ class PHPivot{
                 $sum = 0;
                 foreach($row as $key => $value){
                     if($this->isSystemField($key)) continue;
-
                     $sum += $value;
                 }
                 //If sum > 0 (avoid division with 0)
@@ -799,9 +1056,9 @@ class PHPivot{
                         }
                     }
                 }
-            break;
+            break;*/
             default:
-                die('PHPivot ERROR: Cannot format data as format: ' . $display);
+                $this->_error('Cannot format data as: ' . $this->_values_display);
             break;
         }
     }
@@ -834,16 +1091,22 @@ class PHPivot{
         return $values;
     }
 
-    protected static function countChildrenCols($array){
+
+
+    protected static function countChildrenCols($array, $_source_is_2DTable = false){
         $children = 0;
-        if(is_array($array) && isset($array['_type']) && $array['_type'] == PHPivot::TYPE_COL){
-            foreach($array as $col_name => $col_value){
-                if(PHPivot::isSystemField($col_name)) continue;
-                $children += PHPivot::countChildrenCols($col_value);
+        if(!$_source_is_2DTable){
+            if(is_array($array) && isset($array['_type']) && $array['_type'] == PHPivot::TYPE_COL){
+                foreach($array as $col_name => $col_value){
+                    if(PHPivot::isSystemField($col_name)) continue;
+                    $children += PHPivot::countChildrenCols($col_value);
+                }
             }
-        }
-        if($children == 0){ //count self for colspan, if no children
-            $children = 1;
+            if($children == 0){ //count self for colspan, if no children
+                $children = 1;
+            }
+        }else{
+            return count(PHPivot::pivot_array_keys($array))+1;
         }
         return $children;
     }
@@ -860,6 +1123,9 @@ class PHPivot{
                 $new_html .= $this->getColHtml($col_value, $row_space, $coldepth + 1, $willBeLeftmost);
                 $willBeLeftmost = false;
                 $html .= '<th colspan="' . $this->countChildrenCols($col_value) . '">' . $col_name . '</th>';
+            }
+            if(count($this->_values) - $coldepth > 0){
+                $html = str_repeat($html, count($this->_values) - $coldepth);
             }
             //$html .= '</tr>';
             if($coldepth == 0){
@@ -887,12 +1153,20 @@ class PHPivot{
             $rowDepth++;
         }
        $html_cols = $this->getColHtml($colpoint,$row_space);
-       $colwidth = $this->countChildrenCols($colpoint); //@todo (pointer is missing now!)
+       $colwidth = $this->countChildrenCols($colpoint, $this->_source_is_2DTable); //@todo (pointer is missing now!) //@todo not sure about multi-val!
 
         //$html = $html_cols;
 
-        //@todo
-        $top_col_title = (isset($this->_columns_titles[0]) ? $this->_columns_titles[0] : '(No title)');
+        $top_col_title_html =  '<th colspan="' . $colwidth . '">(No title)</th>';
+        if(isset($this->_columns_titles[0])){
+            $top_col_title_html = '<th colspan="' . $colwidth . '">' . $this->_columns_titles[0] . '</th>';
+        }
+        //If multi-values, use multiple column titles (for additional values)
+        if(count($this->_values) > 1){
+            for($i = 1; $i < count($this->_columns_titles); $i++){
+                $top_col_title_html .=  '<th colspan="' . $colwidth . '">' . $this->_columns_titles[$i] . '</th>';
+            }
+        }
 
         $html_row_titles = '<tr>';
         for($i = 0; $i < count($this->_rows_titles); $i++){
@@ -900,17 +1174,24 @@ class PHPivot{
         }
         $html_row_titles .= '</tr>';
 
+        $html = '<table><thead><tr>' . $row_space
+                    . $top_col_title_html . '</tr>' . $html_cols . $html_row_titles . '</thead>';
 
-        $html = '<table><thead><tr>' . $row_space . '<th colspan="' . $colwidth . '">' 
-                    . $top_col_title . '</th></tr>' . $html_cols . $html_row_titles . '</thead>';
 
-
+        //Print data of the table
         foreach($this->_table as $row_key => $row_data){
             $html .= $this->htmlValues($row_key, $row_data, 0);
         }
 
         $html .= '</table>';
         return $html;
+    }
+
+    protected function getDataValue($row){
+        if(is_array($row) && (isset($row['_val']) || strcmp($row['_val'],'') == 0)) return $row['_val'];
+        echo 'CANNOT find ["_val"] of: ';
+        print_r($row);
+        die('Dying...');
     }
 
     protected function htmlValues(&$key, &$row, $levels, $type = null){
@@ -922,22 +1203,33 @@ class PHPivot{
 
         if(!PHPivot::isDataLevel($row)){
             $html = '';
-            if($type == null || $type == PHPivot::TYPE_ROW ){ 
+            if($type == null || strcmp($type, PHPivot::TYPE_ROW) == 0){
                 $html .= '<td>' . $key . '</td>';
             }
             foreach($row as $head => $nest){
                 if(PHPivot::isSystemField($head)) continue;
-                $new_row = $this->htmlValues($head, $nest, $levels+1, $row['_type']);
+                $t = isset($row['_type']) ?  $row['_type'] : null;
+                $new_row = $this->htmlValues($head, $nest, $levels+1, $t);
                 $html .=  $new_row;
             }
 
-            if($type == null || $type== PHPivot::TYPE_ROW ){ 
+            if($type == null || strcmp($type, PHPivot::TYPE_ROW) == 0 ){
                 $html = '<tr>' . $levelshtml . $html .'</tr>';
             }
             return $html;
         }else{
-            if (isset($row['_type']) && $row['_type'] == PHPivot::TYPE_COMP){ //Deepest level row, with comparison data
-                $comparison_data = '';
+            //@todo (after adding multi-value things)
+            if (isset($row['_type']) && strcmp($row['_type'], PHPivot::TYPE_COMP) == 0){ //Deepest level row, with comparison data
+                //die('Comparisons need to be re-implemented :(');
+                $c = '<td>';
+                for($i = 0; $i < count($row['_val']); $i++){
+                    $c .=  $row['_val'][$i];
+                    if($i+1 < count($row['_val'])) $c .= ' &rarr; ';
+                }
+                $c .= '</td>';
+                return $c;
+                //return '<td>' . $this->getDataValue($row) . '</td>';
+                /*$comparison_data = '';
                 $data_values = PHPivot::pivot_array_values($row);
                 for($i = 0 ; $i < count($data_values); $i++){
                     $comparison_data .= $data_values[$i];
@@ -954,7 +1246,30 @@ class PHPivot{
                     }else{
                         return  '<td>' . $key . '</td>' . '<td>' . $comparison_data . '</td>';
                     }
+                }*/
+            }
+            else if (isset($row['_type']) && strcmp($row['_type'], PHPivot::TYPE_VAL) == 0){ //Deepest level row, with value data
+                /*echo '<h3>DATA:';
+                print_r($row);
+                echo '</h3>';*/
+                return '<td>' . $this->getDataValue($row) . '</td>';
+                /*$data_values = PHPivot::pivot_array_values($row);
+                for($i = 0 ; $i < count($data_values); $i++){
+                    $comparison_data .= $data_values[$i];
+                    if($i + 1 < count($data_values)){
+                        $comparison_data .= ' => ';
+                    }
                 }
+                if($levels == 0){
+                    return '<tr><td>' . $key . '</td><td>' . $comparison_data . '</td></tr>';
+                }else{
+                    $inNest = ($levels - count($this->_columns) - count($this->_rows) + 1 > 0);
+                    if(!$inNest){
+                        return '<td>' . $comparison_data . '</td>';
+                    }else{
+                        return  '<td>' . $key . '</td>' . '<td>' . $comparison_data . '</td>';
+                    }
+                }*/
             }
             else if($type == PHPivot::TYPE_ROW ){ //Deepest level row
                 $html = '<tr>' . $levelshtml . '<td>' . $key . '</td>';

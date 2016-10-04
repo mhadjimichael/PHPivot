@@ -1,0 +1,51 @@
+body{
+    font-family: sans-serif;
+}
+
+table{
+	display:inline-block;
+	margin:15px;
+	margin-bottom:5px;
+	background:#666;
+	font-size:12px;
+	text-align:center;
+	padding:2px;
+	border-collapse:collapse;
+}
+
+table td, table th{
+	border:1px solid #000;
+	margin:0px;
+}
+
+table th{
+	padding:10px;
+	background:#666;
+	color:#FFF;
+	margin:0px;
+}
+
+td{
+	padding:5px;
+}
+
+table th:first-child{
+	text-align: left;
+	padding-left:20px;
+}
+
+table th.row_title{
+	padding:15px;
+}
+
+table tr:nth-child(even){
+	background:#999;
+}
+
+table tr:nth-child(odd){
+	background:#ccc;
+}
+
+table tr:hover{
+	background:#ABC;
+}

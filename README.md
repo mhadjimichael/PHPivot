@@ -9,9 +9,9 @@ A flexible Pivot Table library for PHP.
 - Filters (Equal, Not Equal)
     - Filters support UNIX Wildcards (shell patterns), like \*, ?, [ae], etc. (see php.net/fnmatch )
     - Support for Multiple Values matched as ALL(AND)/OR(ANY)/NONE(NOR) (MATCH_ALL, MATCH_NONE, MATCH_ANY)
-    - @todo? Additional User-Defined functions as Filters
+    - Additional User-Defined functions as Filters
         - addCustomFilter( user_defined_filter_function, $extra_params = null )
-            - @user_defined_filter_function($recordset, $rowID, $extra_params = null) -> returns true whenever a row should be INCLUDED.
+            - @user_defined_filter_function($recordset, $rowID, $extra_params = null) -> should return true whenever a row should be INCLUDED.
     - User-defined "filters" can be setup using calculated columns and regular filters!
 - Calculated Columns
     - User defined functions.
@@ -20,28 +20,35 @@ A flexible Pivot Table library for PHP.
     - Different Row and Column Sorting methods
     - Can give array argument for multiple level/different sorting
     - User-defined sorting functions
-        - @user-defined-sorting-function($a,$b) -> should return $a < $b
+        - @user-defined-sorting-function($a,$b) -> should return $a < $b as boolean
 - Display as:
     - Actual Values
-    - Percentage of deepest level
-- Color Coding (background) of data:
+    - Percentage of col/row
+
+#Features that need migration to the latest version/TODOs
+- Display as: -Percentage of deepest level (@fix)
+- Color Coding (background) of data: (@fix)
     - Low->High/High->Low gradient
+- "Pivot Comparison" mechanism 
+
+#Examples
+#Example01
+- Using the film dataset from: https://perso.telecom-paristech.fr/~eagan/class/igr204/datasets
+- Go to Example01/Example.php to see details
+- Dumped Example.php to Example.php.html
 
 #Usage example:
 ```php
 require 'PHPivot.php';
 
-//@table: a 2D array containing the row headers in the first (0) row followed by the data
-function getPivotHTML($table) {
-  $mypivot = PHPivot::create( $table )
-                  ->setPivotValueField('Earnings', PHPivot::PIVOT_VALUE_SUM, PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL,'Earnings %') //Set Pivot Value Field to area, calculate sum and display as percentage.
-                  ->setPivotRowFields('Area', 'Area') //Show by Area (rows)
-                  ->setSortColumns(PHPivot::SORT_DESC) //Sort Earnings Descending
-                  ->setSortRows('SORT_BY_AREA_CUSTOM_FN') //Sort Area by custom function (defined by the user)
-                  ->addFilter('Area',array('A*','B*')) //Only take into account areas starting with A or B
-                  ->addFilter('Earnings','0', PHPivot::COMPARE_NOT_EQUAL) //ignore no earnings
-                  ->generate();
-
-  return $mypivot->toHtml(); //Return HTML formatted table
+//@table: an associative array containing rows of columns (like JSON)
+function printPivotHTML(){
+    $filmsByActorAndGenre = PHPivot::create($data)
+            ->setPivotRowFields('Actor')
+            ->setPivotColumnFields('Genre')
+            ->setPivotValueFields('Genre',PHPivot::PIVOT_VALUE_COUNT, PHPivot::DISPLAY_AS_VALUE_AND_PERC_ROW, 'Frequency of Genre in each year')
+            ->addFilter('Genre','', PHPivot::COMPARE_NOT_EQUAL) //Filter out blanks/unknown genre
+            ->generate();
+    echo $filmsByActorAndGenre->toHtml();
 }
 ```
