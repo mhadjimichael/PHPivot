@@ -3,7 +3,7 @@ A flexible Pivot Table library for PHP.
 
 #Example01
 - Using the film dataset from: https://perso.telecom-paristech.fr/~eagan/class/igr204/datasets
-- Go to Example01/Example.php to see details
+- Go to [Example01/Example.php](blob/master/Example01/Example.php) to see how the library is used
 - See the output of Example.php [here](https://htmlpreview.github.io/?https://github.com/mhadjimichael/PHPivot/blob/master/Example01/Example.php.html)
 
 #Supported Features:
