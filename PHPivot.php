@@ -166,8 +166,10 @@ class PHPivot{
         $pivotTable['_type'] = PHPivot::TYPE_ROW;
 
         //Create a new instance of PHPivot and pass our data in
-        //$row_titles = $array_rows;
-        array_unshift($row_titles, $row_desc);
+        $row_titles = array();
+	if(!is_null($row_desc)){
+		array_unshift($row_titles, $row_desc);
+	}
 
         $pivot = new self($pivotTable);
         $pivot->set2Dargs($row_titles, $column_title);
