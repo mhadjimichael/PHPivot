@@ -34,7 +34,7 @@
     $filmsByActorAndGenre = PHPivot::create($data)
             ->setPivotRowFields('Actor')
             ->setPivotColumnFields('Genre')
-            ->setPivotValueFields('Genre',PHPivot::PIVOT_VALUE_COUNT, PHPivot::DISPLAY_AS_VALUE_AND_PERC_ROW, 'Frequency of Genre in each year')
+            ->setPivotValueFields('Genre',PHPivot::PIVOT_VALUE_COUNT, PHPivot::DISPLAY_AS_VALUE_AND_PERC_ROW, 'Frequency of Genre by Actor')
             ->addFilter('Genre','', PHPivot::COMPARE_NOT_EQUAL) //Filter out blanks/unknown genre
             ->generate();
     echo $filmsByActorAndGenre->toHtml();

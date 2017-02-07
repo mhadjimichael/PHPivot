@@ -11,7 +11,7 @@
         -Filters support UNIX Wildcards (shell patterns), like *, ?, [ae], etc.
             (see php.net/fnmatch )
         -Support for Multiple Values matched as ALL(AND)/OR(ANY)/NONE(NOR) (MATCH_ALL, MATCH_NONE, MATCH_ANY)
-        -@todo? Additional User-Defined functions as Filters
+        -@redo: Additional User-Defined functions as Filters
             -addCustomFilter( user_defined_filter_function, $extra_params = null )
                 -@user_defined_filter_function($recordset, $rowID, $extra_params = null) -> returns true whenever a row should be INCLUDED.
         -User-defined "filters" can be setup using calculated columns and regular filters!
@@ -30,9 +30,9 @@
     -Color Coding (background) of data:
         -Low->High/High->Low gradient
         @todo:-Comparisons
-        @todo:-Color Max
-        @todo:-Color Min
-        @todo:-Color average
+        @todo:-Color Max (extra color)
+        @todo:-Color Min (extra color)
+        @todo:-Color average (extra color)
         @todo:-Conditional (Value comparison)+pass function
 
 
@@ -40,11 +40,8 @@
   -Make sure % sums up to exaclty 100%
     -http://stackoverflow.com/questions/13483430/how-to-make-rounded-percentages-add-up-to-100
 
-@done (?)
-    -NO ROWS AND MULTIPLE COLUMNS (TABLE 21) (?????)
-    -MULTIPLE COLUMNS (TABLE 22)
-
 */
+
 
 class PHPivot{
     const PIVOT_VALUE_SUM = 1;
@@ -154,22 +151,13 @@ class PHPivot{
         $array_rows = array_keys($pivotTable);
         $count_rows = count($array_rows);
 
-        //$array_vals = array_keys($pivotTable[ $array_rows[0] ]);
-        //$count_vals = count($array_vals);
-
-        /*foreach($pivotTable as $rowName => $rowContent){
-            $pivotTable[$rowName]['_type'] = PHPivot::TYPE_VAL;
-            foreach($rowContent as $valueName => $value){
-                $pivotTable[$rowName][$valueName] = array('_type' => PHPivot::TYPE_VAL, '_val' => $value);
-            }
-        }*/
         $pivotTable['_type'] = PHPivot::TYPE_ROW;
 
         //Create a new instance of PHPivot and pass our data in
         $row_titles = array();
-	if(!is_null($row_desc)){
-		array_unshift($row_titles, $row_desc);
-	}
+        if(!is_null($row_desc)){
+            array_unshift($row_titles, $row_desc);
+        }
 
         $pivot = new self($pivotTable);
         $pivot->set2Dargs($row_titles, $column_title);
@@ -211,16 +199,6 @@ class PHPivot{
     private function _error($msg){
         die('<h4>ERROR: ' . $msg . '</h4>');
     }
-
-    public function setValueFunction($functions = PHPivot::PIVOT_VALUE_SUM){
-        $this->_notice('setValueFunction is deprecated. please switch to "setPivotValueFields"');
-        if(!is_array($functions)){
-            $functions = array($functions);
-        }
-        $this->_values_functions = $functions;
-        return $this;
-    }
-    //@/deprecated
 
     public function setPivotValueFields($values, $functions = PHPivot::PIVOT_VALUE_SUM, /*only 1*/$display = PHPivot::DISPLAY_AS_VALUE, $titles = null){
         if(!is_array($values)){
@@ -297,10 +275,10 @@ class PHPivot{
 
     public function setIgnoreBlankValues(){
         $this->_ignore_blanks = true;
-
         return $this;
     }
 
+    //setting FROM->TO colors (for color-coding)
     public function setColorRange($low = '#00af5d', $high = '#ff0017', $colorBy = null){
         if(is_null($colorBy)){
             $colorBy = PHPivot::COLOR_ALL;
@@ -312,12 +290,11 @@ class PHPivot{
         return $this;
     }
 
-    //@todo? re multi values
+    //in case we have no data, we could omit it if flag set
     protected function cleanBlanks(&$point = null){
         if(!$this->_ignore_blanks)return null;
 
         $countNonBlank = 0;
-        //@todo?
         if(PHPivot::isDataLevel($point)){
             if(!is_array($point)) return (!is_null($point) && !empty($point) ? 1 : 0);
             else if(strcmp($point['_type'],PHPivot::TYPE_COMP) == 0) {
@@ -338,7 +315,6 @@ class PHPivot{
                 }
                 return $countNonBlank;
             }
-            else $this->_error('CleanBlanks:else case');
         }
 
         $point_keys = array_keys($point);
@@ -369,7 +345,6 @@ class PHPivot{
     }
 
     public function addCalculatedColumns($col_name, $calc_function, $extra_params = null){
-        //if(is_array($col_name) || is_array($calc_function)) die('addCalculatedColumn accepts one C.Column per call, parameters: col. name, col. function name.');
         if(!is_array($col_name) && !is_array($calc_function)){
             $col_name = array($col_name);
             $calc_function = array($calc_function);
@@ -419,6 +394,7 @@ class PHPivot{
         return (fnmatch($pattern, $source) ? 0 : -2);
     }
 
+    //pass data through filters and see if it's a match
     private function isFilterOK($rs_row){
         $filterResult = true;
         for($i = 0; $i < count($this->_filters) && $filterResult; $i++){
@@ -480,8 +456,8 @@ class PHPivot{
                     }
                     break;
                 case PHPivot::FILTER_USER_DEFINED:
+                    //@redo @todo (take into account FILTER_MATCH_ALL/NONE/ANY + COMPARE_EQUAL/NOT_EQUAL)
                     //$new_col_vals = call_user_func( $col_fn, $this->_recordset, $i );
-                    //@todo?
                     $this->_error('User defined filters not yet implemented!');
                     $filterResult = $filterResult && call_user_func($this->_recordset, $rs_i, $this->_filters[$i]['extra_params']);
                 break;
@@ -493,6 +469,7 @@ class PHPivot{
         return $filterResult;
     }
 
+    //Produce calculated columns
     protected function calculateColumns(){
         $recordset_rows = count($this->_recordset);
 
@@ -516,13 +493,10 @@ class PHPivot{
                 }
             }
         }
-        //@debug
-        /*echo "\n<!--<h2>With calculated columns</h2>\n";
-        print_r($this->_recordset);
-        echo '-->';*/
         return $this;
     }
 
+    //generate the pivot table; internal representaiton
     public function generate(){
         $table = array();
 
@@ -683,17 +657,12 @@ class PHPivot{
         }else{
             //Source was a 2D table (prepared)
             $table = $this->_recordset;
-
         }
 
         $this->_raw_table = array_merge(array(), $table); //Clone array to "raw table" (used for comparisons)
         $this->formatData($table);
         $this->colorData($table);
 
-        //@debug
-        /*echo "<!-- \n";
-        print_r($table);
-        echo "-->";*/
         $this->_table = $table;
         return $this;
     }
@@ -717,14 +686,14 @@ class PHPivot{
         return true;
     }
 
-
     protected static function isDataLevel(&$row){
         return !is_array($row) || (isset($row['_type']) &&
             (strcmp($row['_type'],PHPivot::TYPE_VAL) == 0 ||
             strcmp($row['_type'],PHPivot::TYPE_COMP) == 0));
     }
 
-
+    //returns actual value even when formatted
+    //@consider: maybe just keep it separate?
     private function getValueFromFormat($a){
         if(is_null($a)) return $a;
         switch($this->_values_display){
@@ -749,14 +718,9 @@ class PHPivot{
         return $a;
     }
 
-    private function getCompareBetter($a,$b,$findMax,$pureNums = false){
+    private function getEdgeValue($a,$b,$findMax = true){
         if(is_null($a)) return $b;
         if(is_null($b)) return $a;
-
-        if(!$pureNums){
-            $a = $this->getValueFromFormat($a);
-            $b = $this->getValueFromFormat($b);
-        }
 
         if($findMax){
             return ($a > $b ? $a : $b);
@@ -774,7 +738,7 @@ class PHPivot{
             if(is_array($v)){
                 $find = $this->getValueFromFormat($v[0]);
                 for($i = 1; $i < count($v); $i++){
-                    $find = $this->getCompareBetter($find, $this->getValueFromFormat($v[$i]), $findMax, true);
+                    $find = $this->getEdgeValue($find, $this->getValueFromFormat($v[$i]), $findMax);
                 }
             }else{
                 $find = $this->getValueFromFormat($v);
@@ -784,7 +748,7 @@ class PHPivot{
             $find = null;
             $k = PHPivot::pivot_array_keys($row);
             for($i = 0; $i < count($k); $i++){
-                $find = $this->getCompareBetter($find, PHPivot::findMax($row[$k[$i]], $findMax), $findMax, true );
+                $find = $this->getEdgeValue($find, PHPivot::findMax($row[$k[$i]], $findMax), $findMax );
             }
             return $find;
         }
@@ -807,8 +771,9 @@ class PHPivot{
         return sprintf('%02x', ($RGB['r'])) . sprintf('%02x', ($RGB['g'])) . sprintf('%02x', ($RGB['b']));
     }
 
+    //Used when coloring, gives color in html (for hex)
     private function getColorOf($value){
-        return 'inherit';
+        return 'inherit'; //@todo: temporarily disabled
         //@todo multi-value
         switch ($this->_color_by){
             case PHPivot::COLOR_ALL:
@@ -824,8 +789,9 @@ class PHPivot{
         }
     }
 
+    //@todo: needs re-implementation
+    //picks a color for each cell based on value
     private function colorData(&$row, $row_name = null){
-        //$this->_notice('colorData needs re-implementation.');
         return; //@TODO
         if(!isset($this->_color_low)) return;
         switch ($this->_color_by){
@@ -838,6 +804,7 @@ class PHPivot{
                 $stops = $max-$min+1;
                 //2. Calculate colors from min to max value (gradient)
                 //@todo: Bezier increments (smoother gradients)
+                //NOTE: Another approach would be linear interpolation between 2 colors?
                 //http://bsou.io/posts/color-gradients-with-python
                 $fromColor = PHPivot::hexToRGB($this->_color_low);
                 $toColor = PHPivot::hexToRGB($this->_color_high);
@@ -849,21 +816,12 @@ class PHPivot{
                 $curColor = array_merge(array(), $fromColor);
 
                 for($i=$min;$i<=$max;$i++){
-                    //$this->_color_of[$i] = '#' . PHPivot::toHexColor($curColor);
                     $this->_color_of[$i] = 'rgba(' . $curColor['r'] . ',' .$curColor['g'] . ','.$curColor['b'] . ',0.8)';
                     $curColor['r'] = floor($fromColor['r'] - $stepBy['r'] * $i);
                     $curColor['g'] = floor($fromColor['g'] - $stepBy['g'] * $i);
                     $curColor['b'] = floor($fromColor['b'] - $stepBy['b'] * $i);
                 }
-/*
-                if(!PHPivot::isDataLevel($row)){
-                    $arr_keys = PHPivot::pivot_array_keys($row);
-                     for($i = 0; $i < count($arr_keys); $i++){
-                        $this->colorData($row[$arr_keys[$i]]);
-                    }
-                }else{
 
-                }*/
             break;
             case PHPivot::COLOR_BY_ROW:
                 //@todo
@@ -893,6 +851,8 @@ class PHPivot{
         }
     }
 
+    //Calculates the percentage out of sum given, sets the value (or appends)
+    //making the _val field "3 (23%)" or "23%"
     private function setAsPercOf(&$d,$sum,$keepValue = false){
         if(!is_array($d)) return;
         if($sum == 0) return;
@@ -901,7 +861,6 @@ class PHPivot{
             $actual_value = $d['_val'];
             if(empty($actual_value)){
                 $actual_value = 0;
-                //return ; //keep them blank!
             }
 
             $d['_val'] = round($actual_value*100/$sum, $this->_decimal_precision);
@@ -916,8 +875,8 @@ class PHPivot{
         }
     }
 
+    //Formats the values as requested in class variable "_values_display" (e.g. % by column)
     private function formatData(&$row){
-
         switch ($this->_values_display){
             case PHPivot::DISPLAY_AS_VALUE:
                 return;
@@ -933,7 +892,6 @@ class PHPivot{
                     $keys = array_keys($row);
                     $keycount = count($keys);
                     for($i = 0; $i < $keycount; $i++){
-                        //if($this->isSystemField($keys[$i])) continue;
                         $this->formatData($row[$keys[$i]]);
                     }
                     return ;
@@ -954,7 +912,7 @@ class PHPivot{
                 $this->setAsPercOf($row, $sum, $keepValue);
             break;
 
-            //@todo
+
             case PHPivot::DISPLAY_AS_VALUE_AND_PERC_COL:
             case PHPivot::DISPLAY_AS_PERC_COL:
                 //Empty table
@@ -965,7 +923,6 @@ class PHPivot{
                     $keys = array_keys($row);
                     $keycount = count($keys);
                     for($i = 0; $i < $keycount; $i++){
-                        //if($this->isSystemField($keys[$i])) continue;
                         $this->formatData($row[$keys[$i]]);
                     }
                     return ;
@@ -987,78 +944,11 @@ class PHPivot{
 
             break;
 
-
+            //@todo
             case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
             case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
                 echo 'WARNING: DISPLAY_AS_PERC_DEEPEST_LEVEL needs re-implementaiton. Displaying plain values.'; //@todo
             break;
-
-            /*case PHPivot::DISPLAY_AS_PERC_DEEPEST_LEVEL:
-            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
-                if(!is_array($row))return; //Empty table
-                //If we didn't reach a "deepest level" array, it means we didn't reach the values yet
-                //so go deeper.
-                if(!empty($row) && !PHPivot::isDeepestLevel($row)){
-                    for($i = 0; $i < count(array_keys($row)); $i++){
-                        if($this->isSystemField(array_keys($row)[$i])) continue;
-
-                        $this->formatData($row[array_keys($row)[$i]]);
-                    }
-                    return ;
-                }
-                //If we reach here it means we have values, so format them appropriately
-                //Calculate Row sum
-                $sum = 0;
-                foreach($row as $key => $value){
-                    if($this->isSystemField($key)) continue;
-
-                    $sum += $value;
-                }
-                //If sum > 0 (avoid division with 0)
-                //Calculate all the %
-                if($sum > 0){
-                    $keys = array_keys($row);
-                    for($i = 0; $i < count($keys); $i++){
-                        if($this->isSystemField($keys[$i])) continue;
-                        $actual_value = $row[$keys[$i]];
-                        if(isset($actual_value)){
-                            $row[$keys[$i]] = round($row[$keys[$i]]*100/$sum, $this->_decimal_precision) . '%';
-                        }
-                    }
-                }
-            break;
-            case PHPivot::DISPLAY_AS_VALUE_AND_PERC_DEEPEST_LEVEL:
-                if(!is_array($row))return; //Empty table
-                //If we didn't reach a "deepest level" array, it means we didn't reach the values yet
-                //so go deeper.
-                if(!empty($row) && !PHPivot::isDeepestLevel($row)){
-                    for($i = 0; $i < count(array_keys($row)); $i++){
-                        if($this->isSystemField(array_keys($row)[$i])) continue;
-
-                        $this->formatData($row[array_keys($row)[$i]]);
-                    }
-                    return ;
-                }
-                //If we reach here it means we have values, so format them appropriately
-                //Calculate Row sum
-                $sum = 0;
-                foreach($row as $key => $value){
-                    if($this->isSystemField($key)) continue;
-                    $sum += $value;
-                }
-                //If sum > 0 (avoid division with 0)
-                //Calculate all the %
-                if($sum > 0){
-                    $keys = array_keys($row);
-                    for($i = 0; $i < count($keys); $i++){
-                        if($this->isSystemField($keys[$i])) continue;
-                        $actual_value = $row[$keys[$i]];
-                        if(isset($actual_value)){
-                            $row[$keys[$i]] = round($row[$keys[$i]]*100/$sum, $this->_decimal_precision) . '% (' . $actual_value . ')';
-                        }
-                    }
-                }
-            break;*/
             default:
                 $this->_error('Cannot format data as: ' . $this->_values_display);
             break;
@@ -1093,8 +983,7 @@ class PHPivot{
         return $values;
     }
 
-
-
+    //Counts number of children columns
     protected static function countChildrenCols($array, $_source_is_2DTable = false){
         $children = 0;
         if(!$_source_is_2DTable){
@@ -1113,11 +1002,10 @@ class PHPivot{
         return $children;
     }
 
+    //Generates the html code for columns
     protected function getColHtml(&$colpoint, $row_space, $coldepth = 0, $isLeftmost = true ){
         $html = '';
         if(is_array($colpoint) && count($this->_columns) - $coldepth > 0){
-            //$html .= '<tr>' . $row_space;
-            //$colwidth *= $colwidth * count(PHPivot::pivot_array_values($colpoint));
             $new_html = '';
             $willBeLeftmost = true;
             foreach($colpoint as $col_name => $col_value){
@@ -1129,7 +1017,6 @@ class PHPivot{
             if(count($this->_values) - $coldepth > 0){
                 $html = str_repeat($html, count($this->_values) - $coldepth);
             }
-            //$html .= '</tr>';
             if($coldepth == 0){
                 return '<tr>' . $row_space . $html . '</tr>' . $new_html;
             }else{
@@ -1140,6 +1027,7 @@ class PHPivot{
         }
     }
 
+    //Generates the html code to display the pivot table as an HTML table
     public function toHtml(){
         $row_space = '';
         for($i = 0; $i < count($this->_rows); $i++){
@@ -1157,12 +1045,11 @@ class PHPivot{
        $html_cols = $this->getColHtml($colpoint,$row_space);
        $colwidth = $this->countChildrenCols($colpoint, $this->_source_is_2DTable); //@todo (pointer is missing now!) //@todo not sure about multi-val!
 
-        //$html = $html_cols;
-
         $top_col_title_html =  '<th colspan="' . $colwidth . '">(No title)</th>';
         if(isset($this->_columns_titles[0])){
             $top_col_title_html = '<th colspan="' . $colwidth . '">' . $this->_columns_titles[0] . '</th>';
         }
+
         //If multi-values, use multiple column titles (for additional values)
         if(count($this->_values) > 1){
             for($i = 1; $i < count($this->_columns_titles); $i++){
@@ -1180,7 +1067,7 @@ class PHPivot{
                     . $top_col_title_html . '</tr>' . $html_cols . $html_row_titles . '</thead>';
 
 
-        //Print data of the table
+        //Print the data of the table
         foreach($this->_table as $row_key => $row_data){
             $html .= $this->htmlValues($row_key, $row_data, 0);
         }
@@ -1193,9 +1080,10 @@ class PHPivot{
         if(is_array($row) && (isset($row['_val']) || strcmp($row['_val'],'') == 0)) return $row['_val'];
         echo 'CANNOT find ["_val"] of: ';
         print_r($row);
-        die('Dying...');
+        die('Exiting...');
     }
 
+    //Figures out where the actual value is and produces html code
     protected function htmlValues(&$key, &$row, $levels, $type = null){
         $levelshtml = '';
 
@@ -1214,15 +1102,12 @@ class PHPivot{
                 $new_row = $this->htmlValues($head, $nest, $levels+1, $t);
                 $html .=  $new_row;
             }
-
             if($type == null || strcmp($type, PHPivot::TYPE_ROW) == 0 ){
                 $html = '<tr>' . $levelshtml . $html .'</tr>';
             }
             return $html;
         }else{
-            //@todo (after adding multi-value things)
             if (isset($row['_type']) && strcmp($row['_type'], PHPivot::TYPE_COMP) == 0){ //Deepest level row, with comparison data
-                //die('Comparisons need to be re-implemented :(');
                 $c = '<td>';
                 for($i = 0; $i < count($row['_val']); $i++){
                     $c .=  $row['_val'][$i];
@@ -1230,48 +1115,9 @@ class PHPivot{
                 }
                 $c .= '</td>';
                 return $c;
-                //return '<td>' . $this->getDataValue($row) . '</td>';
-                /*$comparison_data = '';
-                $data_values = PHPivot::pivot_array_values($row);
-                for($i = 0 ; $i < count($data_values); $i++){
-                    $comparison_data .= $data_values[$i];
-                    if($i + 1 < count($data_values)){
-                        $comparison_data .= ' => ';
-                    }
-                }
-                if($levels == 0){
-                    return '<tr><td>' . $key . '</td><td>' . $comparison_data . '</td></tr>';
-                }else{
-                    $inNest = ($levels - count($this->_columns) - count($this->_rows) + 1 > 0);
-                    if(!$inNest){
-                        return '<td>' . $comparison_data . '</td>';
-                    }else{
-                        return  '<td>' . $key . '</td>' . '<td>' . $comparison_data . '</td>';
-                    }
-                }*/
             }
             else if (isset($row['_type']) && strcmp($row['_type'], PHPivot::TYPE_VAL) == 0){ //Deepest level row, with value data
-                /*echo '<h3>DATA:';
-                print_r($row);
-                echo '</h3>';*/
                 return '<td>' . $this->getDataValue($row) . '</td>';
-                /*$data_values = PHPivot::pivot_array_values($row);
-                for($i = 0 ; $i < count($data_values); $i++){
-                    $comparison_data .= $data_values[$i];
-                    if($i + 1 < count($data_values)){
-                        $comparison_data .= ' => ';
-                    }
-                }
-                if($levels == 0){
-                    return '<tr><td>' . $key . '</td><td>' . $comparison_data . '</td></tr>';
-                }else{
-                    $inNest = ($levels - count($this->_columns) - count($this->_rows) + 1 > 0);
-                    if(!$inNest){
-                        return '<td>' . $comparison_data . '</td>';
-                    }else{
-                        return  '<td>' . $key . '</td>' . '<td>' . $comparison_data . '</td>';
-                    }
-                }*/
             }
             else if($type == PHPivot::TYPE_ROW ){ //Deepest level row
                 $html = '<tr>' . $levelshtml . '<td>' . $key . '</td>';
